@@ -79,15 +79,13 @@ class SpeakFormer(nn.Module):
         hidden_states_list = []
         for i in range(batch_size):
             single_audio = audio[i:i+1]
-            rec_result = self.emotion_model.generate(single_audio, output_dir="/data04/j-huangjiajian-jk/react/code/ReactFace_1/outputs", granularity="utterance", extract_embedding=True)
+            rec_result = self.emotion_model.generate(single_audio, output_dir="./outputs", granularity="utterance", extract_embedding=True)
             single_hidden_state = torch.from_numpy(rec_result[0]['feats']).cuda()
             single_hidden_state = single_hidden_state.unsqueeze(0)
             hidden_states_list.append(single_hidden_state)
         emotion_feature_hidden = torch.cat(hidden_states_list, dim=0)
         emotion_feature_hidden=emotion_feature_hidden.unsqueeze(1)
         emotion_feature = emotion_feature_hidden.repeat(1, time_steps, 1)
-        # rec_result = self.emotion_model.generate(audio, output_dir="/data04/j-huangjiajian-jk/react/code/ReactFace_1/outputs", granularity="utterance", extract_embedding=True)
-        # emotion_feature = torch.from_numpy(rec_result[0]['feats']).cuda()
 
         hidden_states = self.fusion_net(audio_encoded_hidden_states, emotion_feature)
 
@@ -106,6 +104,7 @@ class SpeakFormer(nn.Module):
         speaker_motion = self.speaker_transformer_decoder3(speaker_vector, hidden_states, tgt_mask=tgt_mask, memory_mask=memory_mask)
 
         return  speaker_motion, hidden_states, speaker_vector
+
 
 
 
