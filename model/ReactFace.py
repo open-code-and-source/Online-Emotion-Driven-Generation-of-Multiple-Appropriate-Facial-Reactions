@@ -69,6 +69,9 @@ class Decoder(nn.Module):
             period=period
         )
 
+        self.linear_transform = nn.Linear(3 * 128, 128)
+
+
     def forward(
             self,
             motion_sample: torch.Tensor,
@@ -110,6 +113,24 @@ class Decoder(nn.Module):
             memory=motion_sample
         )
 
+        #在1之后做变化
+        # 假设输入是 [B, T, D]
+        speaker_motion_tmp = speaker_motion.transpose(0, 1)  # -> [T, B, D]
+
+        # 计算一阶差分（速度）
+        motion_velocity = speaker_motion_tmp[1:] - speaker_motion_tmp[:-1]
+        motion_velocity = torch.cat([torch.zeros_like(motion_velocity[:1]), motion_velocity], dim=0)
+
+        # 计算二阶差分（加速度）
+        motion_acceleration = motion_velocity[1:] - motion_velocity[:-1]
+        motion_acceleration = torch.cat([torch.zeros_like(motion_acceleration[:1]), motion_acceleration], dim=0)
+
+        # 拼接 motion + velocity + acceleration
+        listener_reaction_with_dynamics = listener_reaction.transpose(0, 1)+motion_velocity+motion_acceleration
+
+        listener_reaction = listener_reaction_with_dynamics.transpose(0, 1)
+
+
         # Prepare masks
         tgt_mask = self.biased_mask[:, :self.window_size, :self.window_size].clone().detach().to(
             device=self.device
@@ -146,6 +167,15 @@ class Decoder(nn.Module):
 
         # Map to 3DMM parameters
         listener_3dmm_out = self.listener_reaction_3dmm_map_layer(listener_reaction)
+
+        #引入随机偏移
+        if listener_3dmm_out.shape[-1] >= 6:  # 确保有足够的维度
+            batch_size, seq_len, feature_dim = listener_3dmm_out.shape
+            # 生成随机偏移量 (均值0，标准差0.02的小角度偏移)
+            random_offset = torch.randn(batch_size, seq_len, feature_dim, device=listener_3dmm_out.device) * 0.02
+            # 将偏移量应用到旋转参数上
+            listener_3dmm_out += random_offset
+
         return listener_3dmm_out
 
     def reset_window_size(self, window_size: int) -> None:
