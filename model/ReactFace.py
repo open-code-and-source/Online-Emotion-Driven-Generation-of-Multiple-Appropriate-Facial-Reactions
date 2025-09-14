@@ -126,9 +126,14 @@ class Decoder(nn.Module):
         motion_acceleration = torch.cat([torch.zeros_like(motion_acceleration[:1]), motion_acceleration], dim=0)
 
         # 拼接 motion + velocity + acceleration
-        listener_reaction_with_dynamics = listener_reaction.transpose(0, 1)+motion_velocity+motion_acceleration
+        listener_reaction_with_dynamics = torch.cat([
+            listener_reaction.transpose(0, 1),
+            motion_velocity,
+            motion_acceleration
+        ], dim=-1)  # shape: [T, B, D * 3]
 
         listener_reaction = listener_reaction_with_dynamics.transpose(0, 1)
+        listener_reaction = self.linear_transform(listener_reaction)
 
 
         # Prepare masks
