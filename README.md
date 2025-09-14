@@ -10,9 +10,9 @@ This project is built upon the open-source work of [ReactFace](https://github.co
 
 1. **Dataset and Environment Setup**  
    Please first follow the instructions from [ReactFace](https://github.com/lingjivoo/ReactFace) to complete the following configurations:
-   - Dataset download and directory organization
-   - Python environment setup (including dependencies)
-   - Download and placement of required pre-trained weights
+   - Dataset download and directory organization.
+   - Python environment setup (including dependencies).
+   - Download and placement of other required files.
 
 2. **Set Pre-trained Model Paths**  
    Before running the code, please modify the following two files to specify the paths to your pre-trained models:
