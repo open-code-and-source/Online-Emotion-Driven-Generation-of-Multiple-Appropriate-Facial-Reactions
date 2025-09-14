@@ -2,6 +2,31 @@ import torch
 import torch.nn as nn
 from model.wav2vec2focctc import Wav2Vec2ForCTC
 from model.utils import init_biased_mask, enc_dec_mask, PeriodicPositionalEncoding
+from funasr import AutoModel
+
+
+class FeatureFusionNet(nn.Module):
+    def __init__(self, input_dim, hidden_dim, output_dim):
+        super(FeatureFusionNet, self).__init__()
+        self.fc1 = nn.Linear(input_dim, hidden_dim)
+        self.fc2 = nn.Linear(hidden_dim, output_dim)
+        self.relu = nn.ReLU()
+
+    def forward(self, audio_features, emotion_features):
+        # 将两个特征在最后一个维度上拼接起来
+        combined_features = torch.cat((audio_features, emotion_features), dim=-1)
+        
+        # 通过全连接层进行特征转换
+        x = self.relu(self.fc1(combined_features))
+        fused_features = self.fc2(x)
+        
+        return fused_features
+
+
+
+
+
+
 
 class SpeakFormer(nn.Module):
     def __init__(self, img_size=224, feature_dim = 256, period = 25, max_seq_len = 751,  device = 'cpu'):
@@ -17,9 +42,11 @@ class SpeakFormer(nn.Module):
 
         # wav2vec 2.0 weights initialization
 
-        self.audio_encoder = Wav2Vec2ForCTC.from_pretrained("external/facebook/wav2vec2-base-960h")
+        self.audio_encoder = Wav2Vec2ForCTC.from_pretrained("/data04/j-huangjiajian-jk/react/code/ReactFace_1/external/facebook/wav2vec2-base-960h")
         self.audio_encoder.freeze_feature_extractor()
         self.audio_feature_map = nn.Linear(768, feature_dim)
+
+        self.emotion_model = AutoModel(model="iic/emotion2vec_base_finetuned",disable_update=True)
 
         self.PPE = PeriodicPositionalEncoding(feature_dim, period=period, max_seq_len=max_seq_len)
         self.biased_mask = init_biased_mask(n_head=8, max_seq_len=max_seq_len, period=period)
@@ -32,6 +59,9 @@ class SpeakFormer(nn.Module):
 
         self.device = device
 
+        # 初始化融合网络
+        self.fusion_net = FeatureFusionNet(input_dim=768*2, hidden_dim=768, output_dim=768).cuda()
+
 
     def forward(self, video_features, audio):
         # def forward(self, audio, vertice, one_hot, criterion,teacher_forcing=True):
@@ -41,7 +71,26 @@ class SpeakFormer(nn.Module):
         # video: (B,T,C,H,W)
         # audio: (B,A)
         frame_num = video_features.shape[1]
-        hidden_states = self.audio_encoder(audio, frame_num=frame_num)
+        audio_encoded_hidden_states = self.audio_encoder(audio, frame_num=frame_num)
+        batch_size, time_steps, feature_dim = audio_encoded_hidden_states.size()
+
+
+        batch_size = audio.size(0)
+        hidden_states_list = []
+        for i in range(batch_size):
+            single_audio = audio[i:i+1]
+            rec_result = self.emotion_model.generate(single_audio, output_dir="/data04/j-huangjiajian-jk/react/code/ReactFace_1/outputs", granularity="utterance", extract_embedding=True)
+            single_hidden_state = torch.from_numpy(rec_result[0]['feats']).cuda()
+            single_hidden_state = single_hidden_state.unsqueeze(0)
+            hidden_states_list.append(single_hidden_state)
+        emotion_feature_hidden = torch.cat(hidden_states_list, dim=0)
+        emotion_feature_hidden=emotion_feature_hidden.unsqueeze(1)
+        emotion_feature = emotion_feature_hidden.repeat(1, time_steps, 1)
+        # rec_result = self.emotion_model.generate(audio, output_dir="/data04/j-huangjiajian-jk/react/code/ReactFace_1/outputs", granularity="utterance", extract_embedding=True)
+        # emotion_feature = torch.from_numpy(rec_result[0]['feats']).cuda()
+
+        hidden_states = self.fusion_net(audio_encoded_hidden_states, emotion_feature)
+
 
         if hidden_states.shape[1]<frame_num*2:
             video_features = video_features[:, : hidden_states.shape[1]//2]
