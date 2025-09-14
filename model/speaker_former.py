@@ -42,7 +42,7 @@ class SpeakFormer(nn.Module):
 
         # wav2vec 2.0 weights initialization
 
-        self.audio_encoder = Wav2Vec2ForCTC.from_pretrained("/data04/j-huangjiajian-jk/react/code/ReactFace_1/external/facebook/wav2vec2-base-960h")
+        self.audio_encoder = Wav2Vec2ForCTC.from_pretrained(".../external/facebook/wav2vec2-base-960h")
         self.audio_encoder.freeze_feature_extractor()
         self.audio_feature_map = nn.Linear(768, feature_dim)
 
@@ -106,6 +106,7 @@ class SpeakFormer(nn.Module):
         speaker_motion = self.speaker_transformer_decoder3(speaker_vector, hidden_states, tgt_mask=tgt_mask, memory_mask=memory_mask)
 
         return  speaker_motion, hidden_states, speaker_vector
+
 
 
 
